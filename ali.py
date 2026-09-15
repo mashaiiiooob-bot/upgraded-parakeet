@@ -45,8 +45,7 @@ import platform
 
 BOT_TOKEN = "8768032528:AAFfO9a1789URdK840hU6Lff9yQLIqzvtYs"
 ADMIN_ID = 7587661627
-BREVO_API_KEY = "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"
-
+BREVO_API_KEY = os.environ.get("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", "")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ============ دیتابیس‌های اصلی ============
@@ -467,23 +466,7 @@ def send_single_email(sender_email, password, target_email, subject, description
 
 # ============ بررسی سلامت ایمیل ============
 def check_email_validity(email, password):
-    try:
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
-        imap.login(email, password)
-        imap.select("INBOX")
-        imap.close()
-        return True
-    except:
-        try:
-            context = ssl.create_default_context()
-            with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
-                server.ehlo()
-                server.starttls(context=context)
-                server.ehlo()
-                server.login(email, password)
-            return True
-        except:
-            return False
+    return '@' in email and '.' in email
 
 # ============ تابع ارسال همگانی گزارشات ============
 def send_emails(chat_id, progress_msg_id, target, emails, count, user_id, subject, description):
