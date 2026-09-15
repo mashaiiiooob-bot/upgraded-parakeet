@@ -46,7 +46,7 @@ import platform
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not configured")
-ADMIN_ID = 8568930999
+ADMIN_ID = 7587661627
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 if not BREVO_API_KEY:
     raise RuntimeError("BREVO_API_KEY is not configured")
