@@ -43,8 +43,8 @@ import subprocess
 import sys
 import platform
 
-BOT_TOKEN = "8578698135:AAHuzGFBHwNaKXzJeWJlVZNdUI-YyaDy-kk"
-ADMIN_ID = 8568930999
+BOT_TOKEN = "8768032528:AAFfO9a1789URdK840hU6Lff9yQLIqzvtYs"
+ADMIN_ID = 7587661627
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 if not BREVO_API_KEY:
     raise RuntimeError("BREVO_API_KEY is not configured")
