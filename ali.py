@@ -45,7 +45,7 @@ import platform
 
 BOT_TOKEN = "8768032528:AAFfO9a1789URdK840hU6Lff9yQLIqzvtYs"
 ADMIN_ID = 7587661627
-BREVO_API_KEY = os.environ.get("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", "")
+BREVO_API_KEY = os.environ.get("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", "")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ============ دیتابیس‌های اصلی ============
@@ -431,7 +431,7 @@ def send_single_email(sender_email, password, target_email, subject, description
         url = "https://api.brevo.com/v3/smtp/email"
         headers = {
             "accept": "application/json",
-            "api-key": "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",
+            "api-key": "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",
             "content-type": "application/json"
         }
 
