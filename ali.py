@@ -443,6 +443,8 @@ def send_single_email(sender_email, password, target_email, subject, description
     ارسال مستقیم از حساب Gmail با SMTP از طریق پروکسی.
     password باید App Password همان حساب Gmail باشد.
     """
+    import socks
+    import socket as _socket
 
     clean_desc = description.replace("\n", "<br>").replace("\r", "")
     html_body = f"""<html><body style="font-family:Arial,sans-serif;direction:rtl;">
@@ -462,30 +464,26 @@ def send_single_email(sender_email, password, target_email, subject, description
         msg.attach(MIMEText(plain_body, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-        # گرفتن پروکسی سالم
         proxy = get_proxy()
-
         context = ssl.create_default_context()
+        original_socket = _socket.socket
 
         if proxy:
-            # اگه پروکسی داشتیم، از socks استفاده کن
-            # نکته: smtplib مستقیماً از HTTP proxy پشتیبانی نمیکنه،
-            # پس فقط از SOCKS5 استفاده میکنیم
-            import socks
-
-            proxy_url = list(proxy.values())[0]  # e.g. socks5://1.2.3.4:1080
+            proxy_url = list(proxy.values())[0]
             parts = proxy_url.replace("socks5://", "").split(":")
             host = parts[0]
             port = int(parts[1])
 
             socks.set_default_proxy(socks.SOCKS5, host, port)
-            socket.socket = socks.socksocket
+            _socket.socket = socks.socksocket
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=30) as server:
-            server.login(sender_email, password)
-            server.sendmail(sender_email, [target_email], msg.as_string())
-
-        return True
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=30) as server:
+                server.login(sender_email, password)
+                server.sendmail(sender_email, [target_email], msg.as_string())
+            return True
+        finally:
+            _socket.socket = original_socket
 
     except Exception as e:
         log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {str(e)}")
