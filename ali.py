@@ -44,6 +44,7 @@ import sys
 import platform
 import socks  # پکیج PySocks
 from urllib.parse import urlparse
+from proxy_loader import get_proxy_url
 
 # ============================================================
 # SMTP از طریق پروکسی SOCKS5
