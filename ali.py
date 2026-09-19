@@ -1,5 +1,6 @@
 import telebot
 from telebot import types
+from telebot import apihelper
 import json
 import os
 import time
@@ -43,6 +44,18 @@ import subprocess
 import sys
 import platform
 
+# ============ پروکسی ============
+from proxy_loader import apply_random_proxy
+from proxy_updater import run_forever
+
+# اجرای آپدیت‌کننده پروکسی در پس‌زمینه
+threading.Thread(target=run_forever, daemon=True).start()
+
+# کمی صبر کن تا پروکسی‌ها لود بشن
+time.sleep(10)
+
+# اعمال پروکسی
+apply_random_proxy()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not configured")
@@ -2562,7 +2575,31 @@ print("  📌 ارسال فقط موضوع و توضیحات")
 print("=" * 80)
 print("🔄 ربات در حال اجرا...")
 
-bot.infinity_polling(
-    skip_pending=True,
-    allowed_updates=["message", "callback_query"]
-)
+def proxy_watchdog():
+    while True:
+        time.sleep(120)
+        try:
+            r = requests.get(
+                "https://api.telegram.org",
+                proxies=apihelper.proxy,
+                timeout=5,
+            )
+            if r.status_code != 200:
+                raise Exception("dead")
+        except:
+            print("⚠️ پروکسی مرد، در حال تعویض...")
+            apply_random_proxy()
+
+threading.Thread(target=proxy_watchdog, daemon=True).start()
+
+while True:
+    try:
+        bot.infinity_polling(
+            skip_pending=True,
+            allowed_updates=["message", "callback_query"]
+        )
+    except Exception as e:
+        logging.error(f"خطا: {e}")
+        apply_random_proxy()
+        time.sleep(10)
+        continue
