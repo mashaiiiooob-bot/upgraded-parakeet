@@ -440,11 +440,12 @@ def admin_panel(message):
 # ============ ارسال ایمیل با Gmail SMTP ============
 def send_single_email(sender_email, password, target_email, subject, description):
     """
-    ارسال مستقیم از حساب Gmail با SMTP از طریق پروکسی.
+    ارسال مستقیم از حساب Gmail با SMTP از طریق پروکسی SOCKS5.
     password باید App Password همان حساب Gmail باشد.
     """
     import socks
     import socket as _socket
+    from urllib.parse import urlparse
 
     clean_desc = description.replace("\n", "<br>").replace("\r", "")
     html_body = f"""<html><body style="font-family:Arial,sans-serif;direction:rtl;">
@@ -467,15 +468,34 @@ def send_single_email(sender_email, password, target_email, subject, description
         proxy = get_proxy()
         context = ssl.create_default_context()
         original_socket = _socket.socket
+        proxy_applied = False
 
         if proxy:
-            proxy_url = list(proxy.values())[0]
-            parts = proxy_url.replace("socks5://", "").split(":")
-            host = parts[0]
-            port = int(parts[1])
+            try:
+                proxy_url = list(proxy.values())[0]
 
-            socks.set_default_proxy(socks.SOCKS5, host, port)
-            _socket.socket = socks.socksocket
+                # پشتیبانی از socks5://, socks5h:// و احراز هویت
+                parsed = urlparse(proxy_url)
+                if parsed.scheme not in ("socks5", "socks5h"):
+                    logger.warning(f"⚠️ پروکسی نامعتبر: {proxy_url} (فقط socks5 پشتیبانی می‌شود)")
+                else:
+                    host = parsed.hostname
+                    port = parsed.port or 1080
+                    user = parsed.username
+                    passwd = parsed.password
+
+                    socks.set_default_proxy(
+                        socks.SOCKS5,
+                        host,
+                        port,
+                        username=user,
+                        password=passwd,
+                    )
+                    _socket.socket = socks.socksocket
+                    proxy_applied = True
+                    logger.info(f"🌐 استفاده از پروکسی: {host}:{port}")
+            except Exception as pe:
+                logger.warning(f"⚠️ خطا در اعمال پروکسی: {pe}")
 
         try:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=30) as server:
@@ -483,7 +503,9 @@ def send_single_email(sender_email, password, target_email, subject, description
                 server.sendmail(sender_email, [target_email], msg.as_string())
             return True
         finally:
-            _socket.socket = original_socket
+            if proxy_applied:
+                _socket.socket = original_socket
+                socks.set_default_proxy(None)
 
     except Exception as e:
         log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {str(e)}")
