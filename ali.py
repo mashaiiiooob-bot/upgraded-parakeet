@@ -521,7 +521,22 @@ def send_single_email(sender_email, password, target_email, subject, description
 
         context = ssl.create_default_context()
 
-        last_error = None
+        proxy_url = get_proxy_url()
+        proxy = _parse_proxy(proxy_url) if proxy_url else None
+        if proxy:
+            logger.info(f"🌐 پروکسی: {proxy['host']}:{proxy['port']}")
+
+        with Socks5SMTP_SSL(
+            SMTP_HOST, SMTP_PORT, context=context, timeout=30, proxy=proxy
+        ) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, [target_email], msg.as_string())
+
+        return True
+
+    except Exception as e:
+        log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {e}")
+        return False
 
         # ---------------------------------------------------------
         # مرحله ۱: چند پروکسی socks5 سالم رو یکی‌یکی امتحان می‌کنیم
