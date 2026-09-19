@@ -59,7 +59,6 @@ def test_socks5_for_gmail(proxy_url, timeout=TEST_TIMEOUT):
 
 
 def scan_all_proxies():
-    """یه دور کامل تست — فقط وقتی صدا زده می‌شه"""
     global working_proxies
 
     all_proxies = load_all_socks5()
@@ -92,16 +91,13 @@ def scan_all_proxies():
 
 
 def get_proxy_url():
-    """یه پروکسی سالم بده. اگه لیست خالی بود، یه دور کامل اسکن کن"""
     global working_proxies
 
     with lock:
         candidates = list(working_proxies)
 
-    # اگه خالی بود، یه دور کامل اسکن کن
     if not candidates:
         with _scan_lock:
-            # دوباره چک کن شاید یکی دیگه اسکن کرده
             with lock:
                 candidates = list(working_proxies)
             if not candidates:
@@ -114,14 +110,10 @@ def get_proxy_url():
         return None
 
     random.shuffle(candidates)
-
-    # اولین پروکسی رو برگردون (تست اضافه نکن — اگه مرد، حذفش کن)
-    proxy_url = candidates[0]
-    return proxy_url
+    return candidates[0]
 
 
 def report_proxy_failure(proxy_url):
-    """وقتی پروکسی توی ارسال ایمیل خطا داد، حذفش کن"""
     with lock:
         if proxy_url in working_proxies:
             working_proxies.remove(proxy_url)
@@ -131,3 +123,8 @@ def report_proxy_failure(proxy_url):
 def get_working_count():
     with lock:
         return len(working_proxies)
+
+
+def start_proxy_loop():
+    scan_all_proxies()
+    return None
