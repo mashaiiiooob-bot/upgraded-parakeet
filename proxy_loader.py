@@ -1,0 +1,109 @@
+import os
+import random
+import threading
+import requests
+from telebot import apihelper
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+PROXY_DIR = os.getenv("PROXY_DIR", "proxies")
+
+working_proxies = []
+lock = threading.Lock()
+
+
+def load_proxies_from_file(file_path, proxy_type):
+    proxies = []
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if ":" in line:
+                    proxies.append(f"{proxy_type}://{line}")
+    except FileNotFoundError:
+        print(f"⚠️ فایل {file_path} پیدا نشد")
+    return proxies
+
+
+def test_proxy(proxy_url, timeout=8):
+    try:
+        r = requests.get(
+            "https://api.telegram.org",
+            proxies={"http": proxy_url, "https": proxy_url},
+            timeout=timeout,
+            verify=False,
+        )
+        if r.status_code == 200:
+            return proxy_url
+    except Exception:
+        pass
+    return None
+
+
+def find_working_proxies(sample_size=200, max_workers=50):
+    global working_proxies
+
+    all_proxies = []
+    all_proxies.extend(load_proxies_from_file(
+        os.path.join(PROXY_DIR, "socks5.txt"), "socks5"
+    ))
+    all_proxies.extend(load_proxies_from_file(
+        os.path.join(PROXY_DIR, "https.txt"), "https"
+    ))
+
+    if not all_proxies:
+        print("❌ هیچ پروکسی‌ای پیدا نشد")
+        return []
+
+    random.shuffle(all_proxies)
+    sample = all_proxies[:sample_size]
+
+    print(f"🔍 تست {len(sample)} پروکسی از {len(all_proxies)} تا...")
+
+    found = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(test_proxy, p): p for p in sample}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                with lock:
+                    found.append(result)
+                    print(f"✅ پروکسی سالم: {result}")
+
+    with lock:
+        working_proxies = found
+
+    print(f"🎯 تعداد پروکسی سالم: {len(found)}")
+    return found
+
+
+def get_proxy():
+    """یه پروکسی سالم برمی‌گردونه (برای استفاده توی requests)"""
+    global working_proxies
+
+    if not working_proxies:
+        find_working_proxies()
+
+    if not working_proxies:
+        return None
+
+    proxy_url = random.choice(working_proxies)
+    return {"http": proxy_url, "https": proxy_url}
+
+
+def apply_random_proxy(sample_size=200):
+    """پیدا کردن و اعمال یه پروکسی سالم روی telebot"""
+    global working_proxies
+
+    if not working_proxies:
+        find_working_proxies(sample_size=sample_size)
+
+    if not working_proxies:
+        print("⚠️ هیچ پروکسی سالمی پیدا نشد")
+        return False
+
+    proxy_url = random.choice(working_proxies)
+    apihelper.proxy = {"http": proxy_url, "https": proxy_url}
+    print(f"✅ پروکسی اعمال شد: {proxy_url}")
+    return True
