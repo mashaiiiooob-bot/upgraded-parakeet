@@ -42,8 +42,69 @@ import socket
 import subprocess
 import sys
 import platform
-import logging
-from proxy_loader import get_proxy
+import socks  # پکیج PySocks
+from urllib.parse import urlparse
+
+# ============================================================
+# SMTP از طریق پروکسی SOCKS5
+# ============================================================
+
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 465
+
+
+def check_smtp_internals():
+    """اگه ساختار داخلی smtplib عوض شده باشد، همان لحظهٔ startup خطا می‌دهد."""
+    if not hasattr(smtplib.SMTP_SSL, "_get_socket"):
+        raise RuntimeError(
+            "smtplib.SMTP_SSL._get_socket در این نسخه پایتون وجود ندارد؛ "
+            "Socks5SMTP_SSL باید بازنویسی شود."
+        )
+
+
+check_smtp_internals()
+
+
+class Socks5SMTP_SSL(smtplib.SMTP_SSL):
+    """SMTP_SSL که اتصال TCP را از طریق پروکسی SOCKS5 برقرار می‌کند."""
+
+    def __init__(self, *args, proxy=None, **kwargs):
+        # باید قبل از super().__init__ ست شود چون connect() داخل آن صدا زده می‌شود
+        self._proxy = proxy
+        super().__init__(*args, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        if self._proxy is None:
+            return super()._get_socket(host, port, timeout)
+
+        sock = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.set_proxy(
+            socks.SOCKS5,
+            self._proxy["host"],
+            self._proxy["port"],
+            rdns=self._proxy["rdns"],
+            username=self._proxy["username"],
+            password=self._proxy["password"],
+        )
+        sock.settimeout(timeout)
+        sock.connect((host, port))
+        return self.context.wrap_socket(sock, server_hostname=self._host)
+
+
+def _parse_proxy(proxy_url):
+    """پروکسی را parse می‌کند؛ در صورت نامعتبر بودن ValueError می‌دهد."""
+    parsed = urlparse(proxy_url)
+    if parsed.scheme not in ("socks5", "socks5h"):
+        raise ValueError(f"scheme پشتیبانی‌نشده برای پروکسی: {parsed.scheme!r}")
+    if not parsed.hostname:
+        raise ValueError("آدرس پروکسی نامعتبر است")
+    return {
+        "host": parsed.hostname,
+        "port": parsed.port or 1080,
+        "username": parsed.username,
+        "password": parsed.password,
+        "rdns": parsed.scheme == "socks5h",
+    }
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -439,14 +500,6 @@ def admin_panel(message):
 
 # ============ ارسال ایمیل با Gmail SMTP ============
 def send_single_email(sender_email, password, target_email, subject, description):
-    """
-    ارسال مستقیم از حساب Gmail با SMTP از طریق پروکسی SOCKS5.
-    password باید App Password همان حساب Gmail باشد.
-    """
-    import socks
-    import socket as _socket
-    from urllib.parse import urlparse
-
     clean_desc = description.replace("\n", "<br>").replace("\r", "")
     html_body = f"""<html><body style="font-family:Arial,sans-serif;direction:rtl;">
     <div style="max-width:600px;margin:0 auto;padding:20px;border:1px solid #e0e0e0;border-radius:10px;">
@@ -465,50 +518,25 @@ def send_single_email(sender_email, password, target_email, subject, description
         msg.attach(MIMEText(plain_body, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-        proxy = get_proxy()
         context = ssl.create_default_context()
-        original_socket = _socket.socket
-        proxy_applied = False
 
+        # اگه پروکسی تنظیم شده ولی نامعتبر باشد، ValueError می‌دهد
+        # و عمداً به اتصال مستقیم fallback نمی‌کنیم.
+        proxy_url = get_proxy_url()
+        proxy = _parse_proxy(proxy_url) if proxy_url else None
         if proxy:
-            try:
-                proxy_url = list(proxy.values())[0]
+            logger.info(f"🌐 پروکسی: {proxy['host']}:{proxy['port']}")
 
-                # پشتیبانی از socks5://, socks5h:// و احراز هویت
-                parsed = urlparse(proxy_url)
-                if parsed.scheme not in ("socks5", "socks5h"):
-                    logger.warning(f"⚠️ پروکسی نامعتبر: {proxy_url} (فقط socks5 پشتیبانی می‌شود)")
-                else:
-                    host = parsed.hostname
-                    port = parsed.port or 1080
-                    user = parsed.username
-                    passwd = parsed.password
+        with Socks5SMTP_SSL(
+            SMTP_HOST, SMTP_PORT, context=context, timeout=30, proxy=proxy
+        ) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, [target_email], msg.as_string())
 
-                    socks.set_default_proxy(
-                        socks.SOCKS5,
-                        host,
-                        port,
-                        username=user,
-                        password=passwd,
-                    )
-                    _socket.socket = socks.socksocket
-                    proxy_applied = True
-                    logger.info(f"🌐 استفاده از پروکسی: {host}:{port}")
-            except Exception as pe:
-                logger.warning(f"⚠️ خطا در اعمال پروکسی: {pe}")
-
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=30) as server:
-                server.login(sender_email, password)
-                server.sendmail(sender_email, [target_email], msg.as_string())
-            return True
-        finally:
-            if proxy_applied:
-                _socket.socket = original_socket
-                socks.set_default_proxy(None)
+        return True
 
     except Exception as e:
-        log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {str(e)}")
+        log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {e}")
         return False
 
 # ============ بررسی سلامت حساب Gmail ============
