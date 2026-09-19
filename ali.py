@@ -524,7 +524,7 @@ def send_single_email(sender_email, password, target_email, subject, description
 
         # اگه پروکسی تنظیم شده ولی نامعتبر باشد، ValueError می‌دهد
         # و عمداً به اتصال مستقیم fallback نمی‌کنیم.
-        proxy_url = get_proxy_url()
+        proxy_url = get_proxy_url(proxy_type="socks5")
         proxy = _parse_proxy(proxy_url) if proxy_url else None
         if proxy:
             logger.info(f"🌐 پروکسی: {proxy['host']}:{proxy['port']}")
