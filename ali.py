@@ -595,7 +595,19 @@ def check_email_validity(email, password):
     بررسی ورود به Gmail.
     برای Gmail از App Password استفاده شود.
     """
-    # ابتدا SMTP را بررسی می‌کنیم چون ارسال ربات هم از همین مسیر انجام می‌شود.
+    proxy_url = get_proxy_url()
+    proxy = _parse_proxy(proxy_url) if proxy_url else None
+    
+    # تلاش اول: SMTP با پروکسی
+    try:
+        context = ssl.create_default_context()
+        with Socks5SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=15, proxy=proxy) as server:
+            server.login(email, password)
+        return True
+    except Exception as e:
+        logger.warning(f"⚠️ SMTP با پروکسی خطا: {e}")
+    
+    # تلاش دوم: بدون پروکسی
     try:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=15) as server:
@@ -603,8 +615,8 @@ def check_email_validity(email, password):
         return True
     except Exception:
         pass
-
-    # fallback: STARTTLS روی پورت 587
+    
+    # تلاش سوم: STARTTLS
     try:
         context = ssl.create_default_context()
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
