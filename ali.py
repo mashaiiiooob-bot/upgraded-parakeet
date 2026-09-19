@@ -45,9 +45,7 @@ import sys
 import platform
 import socks  # پکیج PySocks
 from urllib.parse import urlparse
-from proxy_loader import get_proxy_url
-from proxy_loader import get_all_working_proxies
-
+from proxy_loader import start_proxy_loop, get_proxy_url, get_working_count
 # ============================================================
 # SMTP از طریق پروکسی SOCKS5
 # ============================================================
@@ -2682,6 +2680,8 @@ except Exception:
 
 # Keep the original bot architecture and all existing handlers intact.
 # Retry temporary polling/network failures instead of terminating the process.
+start_proxy_loop()
+
 while True:
     try:
         bot.infinity_polling(
