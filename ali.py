@@ -46,6 +46,7 @@ import platform
 import socks  # پکیج PySocks
 from urllib.parse import urlparse
 from proxy_loader import get_proxy_url
+from proxy_loader import get_all_working_proxies
 
 # ============================================================
 # SMTP از طریق پروکسی SOCKS5
@@ -522,20 +523,54 @@ def send_single_email(sender_email, password, target_email, subject, description
 
         context = ssl.create_default_context()
 
-        # اگه پروکسی تنظیم شده ولی نامعتبر باشد، ValueError می‌دهد
-        # و عمداً به اتصال مستقیم fallback نمی‌کنیم.
-        proxy_url = get_proxy_url(proxy_type="socks5")
-        proxy = _parse_proxy(proxy_url) if proxy_url else None
-        if proxy:
-            logger.info(f"🌐 پروکسی: {proxy['host']}:{proxy['port']}")
+        last_error = None
 
-        with Socks5SMTP_SSL(
-            SMTP_HOST, SMTP_PORT, context=context, timeout=30, proxy=proxy
-        ) as server:
-            server.login(sender_email, password)
-            server.sendmail(sender_email, [target_email], msg.as_string())
+        # ---------------------------------------------------------
+        # مرحله ۱: چند پروکسی socks5 سالم رو یکی‌یکی امتحان می‌کنیم
+        # ---------------------------------------------------------
+        candidate_proxies = get_all_working_proxies(proxy_type="socks5")
+        random.shuffle(candidate_proxies)
 
-        return True
+        max_proxy_attempts = 3
+        candidate_proxies = candidate_proxies[:max_proxy_attempts]
+
+        for proxy_url in candidate_proxies:
+            try:
+                proxy = _parse_proxy(proxy_url)
+            except ValueError as e:
+                last_error = e
+                continue
+
+            try:
+                logger.info(f"🌐 تلاش ارسال با پروکسی: {proxy['host']}:{proxy['port']}")
+                with Socks5SMTP_SSL(
+                    SMTP_HOST, SMTP_PORT, context=context, timeout=15, proxy=proxy
+                ) as server:
+                    server.login(sender_email, password)
+                    server.sendmail(sender_email, [target_email], msg.as_string())
+                return True
+            except Exception as e:
+                last_error = e
+                logger.info(f"⚠️ پروکسی {proxy_url} شکست خورد: {e}")
+                continue
+
+        # ---------------------------------------------------------
+        # مرحله ۲: اگه هیچ پروکسی‌ای جواب نداد (یا اصلاً پیدا نشد)،
+        # به‌عنوان آخرین راه، بدون پروکسی (اتصال مستقیم) امتحان می‌کنیم
+        # ---------------------------------------------------------
+        try:
+            logger.info("🔓 هیچ پروکسی‌ای جواب نداد؛ تلاش بدون پروکسی (اتصال مستقیم)")
+            with Socks5SMTP_SSL(
+                SMTP_HOST, SMTP_PORT, context=context, timeout=30, proxy=None
+            ) as server:
+                server.login(sender_email, password)
+                server.sendmail(sender_email, [target_email], msg.as_string())
+            return True
+        except Exception as e:
+            last_error = e
+
+        log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {last_error}")
+        return False
 
     except Exception as e:
         log_to_admin(f"❌ خطا در ارسال SMTP از {sender_email}: {e}")
